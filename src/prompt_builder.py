@@ -2,9 +2,9 @@ from typing import List
 
 
 def format_history(history: List[dict]) -> str:
-    """
-    Converts conversation history into a readable string.
-    """
+   
+   # Converts conversation history into a readable string.
+    
 
     if not history:
         return "No previous conversation."
@@ -20,6 +20,7 @@ def format_history(history: List[dict]) -> str:
 
 
 def build_prompt(question: str, context: str, history: List[dict]) -> str:
+    #هي دالة تبني الـ Prompt النهائي الذي سيتم إرساله إلى Gemini
     """
     Builds the final prompt for Gemini.
     """
@@ -49,18 +50,21 @@ Conversation History
 ----------------------------
 
 {formatted_history}
+#هو سجل المحادثة السابقة بين المستخدم والمساعد.
 
 ----------------------------
 Retrieved Context
 ----------------------------
 
 {context}
+#هو النص الذي استرجعه نظام الـ RAG من الملفات (Knowledge Base).
 
 ----------------------------
 User Question
 ----------------------------
 
 {question}
+#هو سؤال المستخدم الحالي
 
 ----------------------------
 Answer Format
@@ -73,3 +77,30 @@ Confidence:
 
     return prompt
 
+'''
+هذا فقط لعمل testing
+history = [
+    {
+        "role": "user",
+        "content": "Tell me about annual leave."
+    },
+    {
+        "role": "assistant",
+        "content": "Employees receive 21 annual leave days."
+    }
+]
+
+context = """
+Employee Handbook.pdf
+Page 15
+
+Employees receive 21 annual leave days.
+Emergency leave requires manager approval.
+"""
+
+question = "What about emergency leave?"
+
+prompt = build_prompt(question, context, history)
+
+print(prompt)
+'''
