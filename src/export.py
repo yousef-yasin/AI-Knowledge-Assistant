@@ -266,7 +266,7 @@ def export_to_markdown(
 
             file.write("### Answer\n\n")
 
-            file.write(f"{answer}\n\n}")
+            file.write(f"{answer}\n\n")
 
             file.write("### Sources\n\n")
 
@@ -373,5 +373,5 @@ if __name__ == "__main__":
     )
 
     print(
-        f"Markdown file created successfully: {markdown_path}"
-    )
+    f"Markdown file created successfully: {markdown_path}"
+)
