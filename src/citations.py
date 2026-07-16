@@ -136,30 +136,58 @@ class CitationManager:
         citations: list[Citation],
     ) -> float:
         """
-        Calculate the average confidence score for all citations.
+        Calculate rank-weighted retrieval confidence.
 
-        Args:
-            citations:
-                List of generated citations.
-
-        Returns:
-            Average confidence percentage.
+        Higher-ranked sources contribute more than lower-ranked sources,
+        because the first retrieved chunk is normally the strongest evidence.
+        The method remains fully derived from real similarity scores.
         """
 
         if not citations:
             return 0.0
 
-        total_score = sum(
-            citation.confidence_score
-            for citation in citations
+        rank_weights = [1.0 / (index + 1) for index in range(len(citations))]
+        weighted_total = sum(
+            citation.confidence_score * weight
+            for citation, weight in zip(citations, rank_weights)
         )
-        # Calculates the total confidence score.
+        total_weight = sum(rank_weights)
+
+        return round(weighted_total / total_weight, 2)
+
+    @staticmethod
+    def calculate_answer_confidence(
+        citations: list[Citation],
+        validation_supported: bool,
+        retrieval_weight: float = 0.60,
+        validation_weight: float = 0.40,
+    ) -> float:
+        """
+        Combine retrieval quality with answer validation.
+
+        The retrieval component uses rank-weighted source similarities.
+        The validation component is 100 when the independent validator
+        confirms the answer is grounded, otherwise 0. This produces a more
+        meaningful answer-level confidence without inventing a fixed score.
+        """
+
+        if not 0.0 <= retrieval_weight <= 1.0:
+            raise ValueError("retrieval_weight must be between 0 and 1.")
+        if not 0.0 <= validation_weight <= 1.0:
+            raise ValueError("validation_weight must be between 0 and 1.")
+        if abs((retrieval_weight + validation_weight) - 1.0) > 1e-9:
+            raise ValueError("confidence weights must add up to 1.0.")
+
+        retrieval_confidence = CitationManager.calculate_overall_confidence(
+            citations
+        )
+        validation_confidence = 100.0 if validation_supported else 0.0
 
         return round(
-            total_score / len(citations),
+            retrieval_confidence * retrieval_weight
+            + validation_confidence * validation_weight,
             2,
         )
-        # Returns the average confidence percentage.
 
     @staticmethod
     def format_citation(citation: Citation) -> str:

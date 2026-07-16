@@ -1,77 +1,31 @@
-import os
-from dotenv import load_dotenv
-from google import genai
+from __future__ import annotations
 
-from prompt_builder import format_history
-
-load_dotenv()
-
-client = genai.Client(
-    api_key=os.getenv("GOOGLE_API_KEY")
-)
+import re
 
 
-def needs_retrieval(question: str, history: list) -> bool:
-    """
-    Decide whether document retrieval is required
-    or if conversation memory is sufficient.
-    """
+class RetrievalDecisionAgent:
+    """Decide whether a question needs document retrieval or memory only."""
 
-    history_text = format_history(history)
+    DOCUMENT_TERMS = {
+        "policy", "document", "handbook", "leave", "vacation", "salary",
+        "department", "working hours", "company", "rule", "procedure",
+        "benefit", "employee", "annual", "sick", "maternity",
+    }
+    FOLLOW_UP_PATTERNS = (
+        r"^(and|what about|how about)\b",
+        r"\b(it|that|those|this|previous answer|you said)\b",
+    )
 
-    prompt = f"""
-You are an AI Retrieval Decision Agent.
+    def decide(self, question: str, history: list[dict]) -> str:
+        cleaned = question.strip().lower()
+        if not history:
+            return "retrieval"
+        if any(term in cleaned for term in self.DOCUMENT_TERMS):
+            return "retrieval"
+        if any(re.search(pattern, cleaned) for pattern in self.FOLLOW_UP_PATTERNS):
+            return "memory"
+        return "retrieval"
 
-Conversation History:
-{history_text}
 
-Current Question:
-{question}
-
-Task:
-
-Decide whether the system should retrieve information
-from the knowledge base.
-
-Return YES if:
-- The question requires information from documents.
-- The answer is not completely available from conversation history.
-- The user asks about company policies, rules, documents, or facts.
-
-Return NO if:
-- The question is only a follow-up.
-- The answer can be inferred from conversation history.
-- The user refers to previous answers using words like:
-  "it", "that", "those", "previous answer", etc.
-
-Return ONLY one word:
-
-YES
-
-or
-
-NO
-"""
-
-    try:
-
-        response = client.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=prompt
-        )
-
-        decision = response.text.strip().upper()
-
-        if "YES" in decision:
-            return True
-
-        if "NO" in decision:
-            return False
-
-        # Default: retrieve documents
-        return True
-
-    except Exception:
-
-        # Safer fallback
-        return True
+def needs_retrieval(question: str, history: list[dict]) -> bool:
+    return RetrievalDecisionAgent().decide(question, history) == "retrieval"

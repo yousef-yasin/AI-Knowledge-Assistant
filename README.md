@@ -1,256 +1,178 @@
-# AI Knowledge Assistant
+# AI Knowledge Assistant — Full Bonus Edition
 
 ## Overview
 
-AI Knowledge Assistant is a Retrieval-Augmented Generation (RAG) application that answers user questions based only on a provided knowledge base.
+A production-style Retrieval-Augmented Generation (RAG) assistant that loads company documents, creates embeddings, performs hybrid retrieval, validates Gemini answers, cites sources, remembers the conversation, and generates evaluation reports.
 
-The system processes different document types, creates embeddings, stores them in a vector database, retrieves the most relevant information, and generates accurate answers using Google's Gemini model.
+The project implements **all core requirements and all bonus challenges** in AI Track Team Assignment 02.
 
-This project was developed as part of the AI Track Team Assignment.
+## Core Features
 
----
+- Automatic indexing for PDF, DOCX, TXT, Markdown and CSV
+- Metadata extraction: document name, page number and chunk number
+- Meaningful overlapping chunks
+- Sentence Transformer embeddings
+- Persistent ChromaDB vector database
+- Intelligent query rewriting
+- Top-K semantic retrieval, deduplication and context token budget
+- Gemini answer generation grounded only in retrieved context
+- Post-generation response validation
+- Source citations and answer-level confidence
+- Conversation memory
+- TXT and Markdown conversation export
+- 25-question evaluation suite with CSV and Markdown reports
 
-## Features
+## All Bonus Challenges
 
-- Document Loader
-- Metadata Extraction
-- Document Chunking
-- Embedding Generation
-- Vector Database Storage
-- Query Rewriting
-- Semantic Retrieval
-- Context Builder
-- Prompt Engineering
-- Gemini Integration
-- Response Validation
-- Conversation Memory
-- Conversation Export (TXT & Markdown)
-- AI Evaluation Framework
-- Source Confidence Scoring
-- Automatic CSV and Markdown Evaluation Reports
+| Bonus | Implementation |
+|---|---|
+| Hybrid Search | Chroma semantic search + BM25 keyword search + Reciprocal Rank Fusion |
+| Document summarization during indexing | Extractive summaries indexed beside normal chunks |
+| Multi-query retrieval | Up to three complementary queries per question with fused results |
+| Confidence scoring | Weighted retrieval evidence combined with validator outcome |
+| Streaming AI responses | Enabled by default; toggle with the `stream` command |
+| Prompt strategy comparison | Basic vs advanced comparison reports |
+| Automatic evaluation reports | 25 end-to-end questions; CSV and Markdown output |
+| OCR image-based PDFs | PDFium rendering + Tesseract OCR fallback |
+| Simple AI agent | Routes questions to knowledge-base retrieval or conversation memory |
 
----
-
-## Supported File Types
-
-- PDF
-- DOCX
-- TXT
-- Markdown
-- CSV
-
----
+See [`docs/BONUS_FEATURES.md`](docs/BONUS_FEATURES.md) for demonstration details and [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the full Mermaid architecture diagram.
 
 ## Project Structure
 
-```
+```text
 AI-Knowledge-Assistant/
-│
-├── data/
-├── exports/
+├── data/                       # Sample knowledge base
+├── chroma_db/                  # Persistent vector database
+├── docs/
+│   ├── ARCHITECTURE.md
+│   └── BONUS_FEATURES.md
 ├── evaluation_results/
+├── exports/
 ├── tests/
-│
+├── evaluation_questions.json  # 25 evaluation cases
 ├── src/
 │   ├── knowledge_base/
-│   │   ├── loader.py
+│   │   ├── loader.py           # Includes OCR fallback
 │   │   ├── metadata.py
-│   │   ├── chunker.py
-│   │   └── __init__.py
-│   │
+│   │   └── chunker.py
+│   ├── decision_agent.py
+│   ├── summarizer.py
+│   ├── keyword_search.py
 │   ├── embeddings.py
 │   ├── vector_store.py
 │   ├── query_rewriter.py
-│   ├── retriever.py
+│   ├── retriever.py            # Hybrid + multi-query retrieval
 │   ├── context_builder.py
 │   ├── prompt_builder.py
-│   ├── generator.py
+│   ├── generator.py            # Standard + streaming generation
 │   ├── validator.py
+│   ├── citations.py
 │   ├── memory.py
 │   ├── export.py
 │   ├── evaluation.py
+│   ├── evaluation_runner.py
+│   ├── prompt_comparison.py
 │   └── main.py
-│
-├── chroma_db/
-├── README.md
+├── .env.example
 ├── requirements.txt
-├── .env
-└── .gitignore
+└── README.md
 ```
-
----
-
-## AI Pipeline
-
-```
-Documents
-      │
-      ▼
-Document Loader
-      │
-      ▼
-Metadata Extraction
-      │
-      ▼
-Chunking
-      │
-      ▼
-Embeddings
-      │
-      ▼
-Vector Database
-      │
-      ▼
-User Question
-      │
-      ▼
-Query Rewriting
-      │
-      ▼
-Semantic Retrieval
-      │
-      ▼
-Context Builder
-      │
-      ▼
-Prompt Builder
-      │
-      ▼
-Gemini
-      │
-      ▼
-Response Validation
-      │
-      ▼
-Conversation Memory
-      │
-      ▼
-Final Answer
-      │
-      ▼
-Conversation Export
-```
-
----
 
 ## Installation
 
-Clone the repository:
-
-```bash
-git clone <repository-url>
-```
-
-Go to the project directory:
-
-```bash
-cd AI-Knowledge-Assistant
-```
-
-Create a virtual environment:
-
-```bash
+```powershell
 python -m venv venv
-```
-
-Activate it:
-
-Windows
-
-```bash
 venv\Scripts\activate
-```
-
-Linux / macOS
-
-```bash
-source venv/bin/activate
-```
-
-Install the required packages:
-
-```bash
 pip install -r requirements.txt
 ```
 
----
+Copy `.env.example` to `.env`:
 
-## Environment Variables
-
-Create a `.env` file and add your Gemini API key:
-
-```
-GOOGLE_API_KEY=YOUR_API_KEY
+```env
+GOOGLE_API_KEY=YOUR_GEMINI_API_KEY
+HF_TOKEN=OPTIONAL_HUGGING_FACE_TOKEN
 ```
 
----
+### OCR Setup on Windows
 
-## Running the Project
+Python OCR packages are included in `requirements.txt`. Tesseract itself is a system program and must also be installed. Install **Tesseract OCR for Windows** and ensure its installation folder is available in the Windows `PATH`. The assistant still works normally for text-based PDFs when Tesseract is not installed; OCR pages simply use the safe fallback.
 
-```bash
+## Run the Assistant
+
+```powershell
 python -m src.main
 ```
 
----
+Commands inside the assistant:
 
-## Export Feature
-
-The assistant supports exporting conversations in:
-
-- TXT
-- Markdown (.md)
-
-Exported files are automatically saved inside:
-
-```
-exports/
+```text
+exit     stop the program
+export   export conversation as TXT and Markdown
+clear    clear session memory
+reindex  rebuild ChromaDB with summaries and OCR
+stream   toggle streaming responses
 ```
 
----
+> The included ChromaDB may contain the original chunks. Run `reindex` once after installing the bonus version so document summaries and OCR metadata are added to the index.
 
-## Evaluation
+## Run All Tests
 
-The evaluation module measures:
+```powershell
+python -m pytest -q
+```
 
-- Retrieval Accuracy
-- Grounded Responses
-- Expected vs Actual Answers
-- Overall Performance Score
+## Run the 25-Question Evaluation
 
----
+```powershell
+python -m src.evaluation_runner
+```
 
-## Technologies Used
+Generated files:
 
-- Python
-- Google Gemini API
-- ChromaDB
-- Sentence Transformers
-- Markdown
-- Git
-- GitHub
+```text
+evaluation_results/evaluation_report.csv
+evaluation_results/evaluation_report.md
+```
 
----
+## Compare Prompt Strategies
+
+```powershell
+python -m src.prompt_comparison
+```
+
+Generated files:
+
+```text
+evaluation_results/prompt_strategy_comparison.csv
+evaluation_results/prompt_strategy_comparison.md
+```
+
+## Architecture
+
+```mermaid
+flowchart LR
+    A[Documents] --> B[Loader + OCR]
+    B --> C[Metadata + Chunking + Summaries]
+    C --> D[Embeddings]
+    D --> E[(ChromaDB)]
+    Q[Question] --> F[Decision Agent]
+    F --> G[Query Rewrite + Multi-query]
+    G --> H[Semantic Search]
+    G --> I[BM25 Search]
+    H --> J[Rank Fusion]
+    I --> J
+    J --> K[Context Builder]
+    K --> L[Gemini Streaming]
+    L --> M[Validator]
+    M --> N[Answer + Citations + Confidence]
+```
 
 ## Team Responsibilities
 
 | Member | Responsibility |
-|---------|---------------|
+|---|---|
 | Member 1 | Loader, Metadata, Chunking, Embeddings |
-| Member 2 | Vector Database, Retrieval, Query Rewriting, Context Builder |
-| Member 3 | Prompt Builder, Gemini Integration, Validation, Memory |
-| Member 4 | Evaluation, Export, Documentation, Testing, Final Integration |
-
----
-
-## Future Improvements
-
-- Hybrid Search
-- OCR Support
-- Streaming Responses
-- Multi-Query Retrieval
-
----
-
-## License
-
-This project was developed for educational purposes as part of the AI Track Team Assignment.
+| Member 2 | Vector Database, Hybrid Retrieval, Query Rewriting, Context Builder |
+| Member 3 | Prompt Builder, Gemini Integration, Validation, Memory, Agent |
+| Member 4 | Evaluation, Export, Documentation, Testing, GitHub, Jira, Final Integration |
