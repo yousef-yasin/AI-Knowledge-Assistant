@@ -12,10 +12,19 @@ def format_history(history: List[dict]) -> str:
     formatted_messages = []
 
     for message in history:
-        role = message.get("role", "Unknown").capitalize()
-        content = message.get("content", "")
+        role = message.get(
+            "role",
+            "Unknown",
+        ).capitalize()
 
-        formatted_messages.append(f"{role}: {content}")
+        content = message.get(
+            "content",
+            "",
+        )
+
+        formatted_messages.append(
+            f"{role}: {content}"
+        )
 
     return "\n".join(formatted_messages)
 
@@ -23,10 +32,10 @@ def format_history(history: List[dict]) -> str:
 def build_prompt(
     question: str,
     context: str,
-    history: List[dict]
+    history: List[dict],
 ) -> str:
     """
-    Build the basic prompt.
+    Build a basic grounded prompt.
     """
 
     formatted_history = format_history(history)
@@ -34,16 +43,21 @@ def build_prompt(
     prompt = f"""
 You are an AI Knowledge Assistant.
 
-Answer the user's question using ONLY the retrieved context.
+Your task is to answer the user's question using ONLY
+the retrieved context.
 
 Rules:
-- Never invent information.
+
+- Use only information available in the retrieved context.
 - Never use outside knowledge.
-- If the answer is not available in the retrieved context, say:
-  "The requested information is not available in the retrieved documents."
-- Keep the answer concise.
-- Include document citations.
-- Give a confidence score from 0 to 100.
+- Never invent information.
+- If the answer is not available in the context, reply exactly:
+"The requested information is not available in the retrieved documents."
+- Keep the answer concise and professional.
+- Do not include sources.
+- Do not include citations.
+- Do not include confidence scores.
+- Return only the final answer text.
 
 Conversation History:
 {formatted_history}
@@ -54,13 +68,7 @@ Retrieved Context:
 User Question:
 {question}
 
-Response Format
-
 Answer:
-
-Sources:
-
-Confidence:
 """
 
     return prompt.strip()
@@ -69,7 +77,7 @@ Confidence:
 def build_advanced_prompt(
     question: str,
     context: str,
-    history: List[dict]
+    history: List[dict],
 ) -> str:
     """
     Build an advanced prompt for higher accuracy.
@@ -80,23 +88,23 @@ def build_advanced_prompt(
     prompt = f"""
 You are an advanced AI Knowledge Assistant.
 
-Your goal is to generate accurate, grounded, and professional answers.
+Generate a precise and professional answer based ONLY
+on the retrieved context.
 
 Instructions:
 
 - Answer ONLY using the retrieved context.
-- Never use outside knowledge.
+- Every factual statement must be supported by the context.
 - Never hallucinate.
-- Every factual statement must be supported by the retrieved context.
-- If the answer is missing from the context, reply exactly:
-  "The requested information is not available in the retrieved documents."
-- Consider the conversation history only to understand references such as "it", "that", or follow-up questions.
-- Do not let conversation history override the retrieved context.
-- Keep the answer concise and professional.
-- Use bullet points when appropriate.
-- Include all relevant document citations.
-- Base the confidence score ONLY on the retrieved context.
-- Confidence must be an integer from 0 to 100.
+- Never use external knowledge.
+- Use conversation history only to understand references
+  such as "it", "that", or follow-up questions.
+- Do not allow conversation history to override retrieved context.
+- If the information is missing, reply exactly:
+"The requested information is not available in the retrieved documents."
+- Keep the answer concise.
+- Use bullet points if they improve readability.
+- Return ONLY the answer text.
 
 Conversation History:
 {formatted_history}
@@ -107,32 +115,7 @@ Retrieved Context:
 User Question:
 {question}
 
-Response Format
-
 Answer:
-
-Sources:
-- Document Name:
-- Page Number:
-
-Confidence:
 """
 
     return prompt.strip()
-
-
-
-
-
-
-
-
-    question = "What about emergency leave?"
-
-    prompt = build_prompt(
-        question=question,
-        context=context,
-        history=history
-    )
-
-    print(prompt)

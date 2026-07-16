@@ -1,20 +1,63 @@
-from src.vector_store import VectorDB
 from src.retriever import RetrievalEngine
 
-# Connect to your existing persisted DB (same path used when you built it)
-db = VectorDB(persist_path="./chroma_db", collection_name="knowledge_base")
 
-print(f"Documents in collection: {db.count()}")
+class FakeVectorDB:
+    def query(self, query_embedding, n_results, where=None):
+        assert query_embedding == [0.1, 0.2]
+        assert n_results == 2
 
-retriever = RetrievalEngine(vector_db=db)
+        return {
+            "documents": [["First result", "Second result"]],
+            "metadatas": [[
+                {"document_name": "first.txt", "chunk_number": 1},
+                {"document_name": "second.txt", "chunk_number": 2},
+            ]],
+            "distances": [[0.10, 0.25]],
+        }
 
-# <- replace with something relevant to your actual docs
-query = "your test question here"
-results = retriever.retrieve(query, top_k=3)
 
-print(f"\nQuery: {query}\n")
-for i, chunk in enumerate(results, start=1):
-    print(f"--- Result {i} (score: {chunk.score:.4f}) ---")
-    print(chunk.text[:200])
-    print(f"metadata: {chunk.metadata}")
-    print()
+class FakeEmbeddingGenerator:
+    def generate_embedding(self, text: str):
+        assert text == "annual leave days"
+        return [0.1, 0.2]
+
+
+class FakeRewriteResult:
+    rewritten = "annual leave days"
+
+
+class FakeQueryRewriter:
+    def rewrite(self, query: str):
+        assert query == "How many leave days?"
+        return FakeRewriteResult()
+
+
+def test_retrieve_returns_ranked_chunks() -> None:
+    retriever = RetrievalEngine(
+        vector_db=FakeVectorDB(),
+        embedding_generator=FakeEmbeddingGenerator(),
+        query_rewriter=FakeQueryRewriter(),
+    )
+
+    results = retriever.retrieve("How many leave days?", top_k=2)
+
+    assert len(results) == 2
+    assert results[0].text == "First result"
+    assert results[0].score == 0.90
+    assert results[1].metadata["document_name"] == "second.txt"
+
+
+def test_retrieve_can_skip_second_rewrite() -> None:
+    retriever = RetrievalEngine(
+        vector_db=FakeVectorDB(),
+        embedding_generator=FakeEmbeddingGenerator(),
+        query_rewriter=FakeQueryRewriter(),
+    )
+
+    results = retriever.retrieve(
+        "annual leave days",
+        top_k=2,
+        rewrite_query=False,
+    )
+
+    assert len(results) == 2

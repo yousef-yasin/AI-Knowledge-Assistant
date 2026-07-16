@@ -26,6 +26,8 @@ This project was developed as part of the AI Track Team Assignment.
 - Conversation Memory
 - Conversation Export (TXT & Markdown)
 - AI Evaluation Framework
+- Source Confidence Scoring
+- Automatic CSV and Markdown Evaluation Reports
 
 ---
 
@@ -69,7 +71,7 @@ AI-Knowledge-Assistant/
 │   ├── evaluation.py
 │   └── main.py
 │
-├── vector_db/
+├── chroma_db/
 ├── README.md
 ├── requirements.txt
 ├── .env
@@ -178,7 +180,7 @@ pip install -r requirements.txt
 Create a `.env` file and add your Gemini API key:
 
 ```
-GEMINI_API_KEY=YOUR_API_KEY
+GOOGLE_API_KEY=YOUR_API_KEY
 ```
 
 ---
@@ -186,7 +188,7 @@ GEMINI_API_KEY=YOUR_API_KEY
 ## Running the Project
 
 ```bash
-python src/main.py
+python -m src.main
 ```
 
 ---
@@ -223,7 +225,6 @@ The evaluation module measures:
 - Google Gemini API
 - ChromaDB
 - Sentence Transformers
-- LangChain (if used)
 - Markdown
 - Git
 - GitHub
@@ -247,8 +248,6 @@ The evaluation module measures:
 - OCR Support
 - Streaming Responses
 - Multi-Query Retrieval
-- Automatic Evaluation Reports
-- Confidence Scoring
 
 ---
 

@@ -79,7 +79,15 @@ Return JSON only.
 
         result = response.text.strip()
 
-        return json.loads(result)
+        if result.startswith("```json"):
+            result = result[7:]
+        elif result.startswith("```"):
+            result = result[3:]
+
+        if result.endswith("```"):
+            result = result[:-3]
+
+        return json.loads(result.strip())
 
     except Exception as e:
 

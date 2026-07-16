@@ -1,172 +1,214 @@
 """
 main.py
 
-Main integration file for the AI Knowledge Assistant.
-
-This file connects:
-
-1. Query rewriting
-2. Semantic retrieval
-3. Context building
-4. Prompt building
-5. Gemini answer generation
-6. Answer validation
-7. Confidence evaluation
-8. Conversation export
+Final integration file for the AI Knowledge Assistant.
 """
 
-
+from pathlib import Path
 from typing import Any
 
-
-# Import the query rewriting function
-from query_rewriter import rewrite_query
-
-
-# Import the retrieval function
-from retriever import retrieve_relevant_chunks
-
-
-# Import the context building function
-from context_builder import build_context
-
-
-# Import the prompt building function
-from prompt_builder import build_prompt
+from src.citations import Citation, CitationManager
+from src.context_builder import ContextBuilder
+from src.embeddings import EmbeddingGenerator
+from src.export import export_conversation
+from src.generator import generate_answer
+from src.knowledge_base.chunker import DocumentChunker
+from src.knowledge_base.loader import DocumentLoader
+from src.memory import ConversationMemory
+from src.query_rewriter import QueryRewriter
+from src.retriever import RetrievalEngine
+from src.validator import validate_answer
+from src.vector_store import VectorDB
 
 
-# Import the Gemini answer generation function
-from generator import generate_answer
+DATA_DIRECTORY = Path("data")
+SUPPORTED_EXTENSIONS = {
+    ".pdf",
+    ".docx",
+    ".txt",
+    ".md",
+    ".csv",
+}
 
 
-# Import the response validation function
-from validator import validate_answer
-
-
-# Import the evaluation function
-from evaluation import evaluate_answer
-
-
-# Import the conversation export function
-from export import export_conversation
-
-
-def get_chunk_text(chunk: Any) -> str:
+def index_knowledge_base(
+    vector_db: VectorDB,
+    force_reindex: bool = False,
+) -> int:
     """
-    Extract the text from a retrieved chunk.
+    Load, chunk, embed, and store all supported files from data/.
 
-    The retrieved chunk may be:
-    - A string
-    - A dictionary containing text or content
+    The current implementation avoids duplicate indexing by skipping
+    indexing when the vector database already contains chunks.
+
+    Args:
+        vector_db:
+            Vector database instance.
+
+        force_reindex:
+            Reserved for future full re-index support.
+
+    Returns:
+        Number of indexed chunks.
     """
 
-    if isinstance(chunk, str):
-        return chunk
+    existing_count = vector_db.count()
 
-    if isinstance(chunk, dict):
-        return str(
-            chunk.get("text")
-            or chunk.get("content")
-            or chunk.get("chunk_text")
-            or ""
+    if existing_count > 0 and not force_reindex:
+        print(
+            f"Knowledge base already contains "
+            f"{existing_count} indexed chunks."
+        )
+        return existing_count
+
+    if not DATA_DIRECTORY.exists():
+        raise FileNotFoundError(
+            f"Knowledge base directory was not found: "
+            f"{DATA_DIRECTORY.resolve()}"
         )
 
-    return str(chunk)
+    document_paths = sorted(
+        path
+        for path in DATA_DIRECTORY.iterdir()
+        if path.is_file()
+        and path.suffix.lower() in SUPPORTED_EXTENSIONS
+    )
 
-
-def extract_sources(
-    retrieved_chunks: list[Any]
-) -> list[dict[str, Any]]:
-    """
-    Extract document source information from retrieved chunks.
-
-    Each source may contain:
-    - document_name
-    - page_number
-    - chunk_number
-    """
-
-    sources: list[dict[str, Any]] = []
-
-    for chunk in retrieved_chunks:
-
-        if not isinstance(chunk, dict):
-            continue
-
-        metadata = chunk.get("metadata", {})
-
-        if not isinstance(metadata, dict):
-            metadata = {}
-
-        document_name = (
-            chunk.get("document_name")
-            or metadata.get("document_name")
-            or metadata.get("source")
-            or "Unknown document"
+    if not document_paths:
+        raise FileNotFoundError(
+            "No supported documents were found inside data/."
         )
 
-        page_number = (
-            chunk.get("page_number")
-            or metadata.get("page_number")
-            or metadata.get("page")
-        )
+    loader = DocumentLoader()
+    chunker = DocumentChunker(
+        chunk_size=800,
+        chunk_overlap=100,
+    )
+    embedding_generator = EmbeddingGenerator()
 
-        chunk_number = (
-            chunk.get("chunk_number")
-            or metadata.get("chunk_number")
-            or metadata.get("chunk_id")
-        )
+    all_documents = []
 
-        source = {
-            "document_name": document_name,
-            "page_number": page_number,
-            "chunk_number": chunk_number
-        }
+    print("\nIndexing knowledge base...")
+    print("-" * 60)
 
-        # Prevent duplicate sources
-        if source not in sources:
-            sources.append(source)
+    for document_path in document_paths:
+        try:
+            loaded_documents = loader.load(document_path)
+            all_documents.extend(loaded_documents)
 
-    return sources
-
-
-def process_validation(
-    validation_result: Any,
-    original_answer: str
-) -> tuple[bool, str]:
-    """
-    Process different validator return formats.
-
-    The validator may return:
-    - True or False
-    - A dictionary
-    - A validated answer string
-    """
-
-    if isinstance(validation_result, bool):
-        return validation_result, original_answer
-
-    if isinstance(validation_result, dict):
-
-        is_valid = validation_result.get(
-            "is_valid",
-            validation_result.get("valid", True)
-        )
-
-        validated_answer = validation_result.get(
-            "answer",
-            validation_result.get(
-                "validated_answer",
-                original_answer
+            print(
+                f"Loaded: {document_path.name} "
+                f"({len(loaded_documents)} document part(s))"
             )
+
+        except Exception as error:
+            print(
+                f"Skipped {document_path.name}: {error}"
+            )
+
+    if not all_documents:
+        raise RuntimeError(
+            "No readable documents could be loaded."
         )
 
-        return bool(is_valid), str(validated_answer)
+    chunks = chunker.chunk_documents(all_documents)
 
-    if isinstance(validation_result, str):
-        return True, validation_result
+    if not chunks:
+        raise RuntimeError(
+            "No chunks were generated from the documents."
+        )
 
-    return True, original_answer
+    print(f"Generated chunks: {len(chunks)}")
+    print("Generating embeddings...")
+
+    embedded_chunks = embedding_generator.embed_chunks(chunks)
+
+    if not embedded_chunks:
+        raise RuntimeError(
+            "No embeddings were generated."
+        )
+
+    vector_db.add_embedded_chunks(embedded_chunks)
+
+    indexed_count = vector_db.count()
+
+    print(
+        f"Knowledge base indexed successfully. "
+        f"Total stored chunks: {indexed_count}"
+    )
+
+    return indexed_count
+
+
+def citation_to_source(
+    citation: Citation,
+) -> dict[str, Any]:
+    """
+    Convert a Citation object into the dictionary format
+    required by export.py.
+    """
+
+    return {
+        "document_name": citation.document_name,
+        "page_number": citation.page_number,
+        "chunk_number": citation.chunk_number,
+    }
+
+
+def calculate_overall_confidence(
+    citations: list[Citation],
+) -> float:
+    """
+    Calculate the average citation confidence.
+    """
+
+    return CitationManager.calculate_overall_confidence(
+        citations
+    )
+
+
+def validation_passed(
+    validation_result: dict[str, Any],
+) -> bool:
+    """
+    Check whether validator.py approved the answer.
+    """
+
+    status = str(
+        validation_result.get("status", "")
+    ).upper()
+
+    supported = bool(
+        validation_result.get("supported", False)
+    )
+
+    return status == "PASS" and supported
+
+
+def print_sources(
+    citations: list[Citation],
+) -> None:
+    """
+    Print formatted source citations.
+    """
+
+    print("\nSources:")
+
+    if not citations:
+        print("- No supporting sources were found.")
+        return
+
+    citation_manager = CitationManager()
+
+    for index, citation in enumerate(
+        citations,
+        start=1,
+    ):
+        formatted = citation_manager.format_citation(
+            citation
+        )
+
+        print(f"{index}. {formatted}")
 
 
 def run_assistant() -> None:
@@ -178,71 +220,142 @@ def run_assistant() -> None:
     print("AI Knowledge Assistant")
     print("=" * 60)
 
-    print("Ask questions using the documents in the knowledge base.")
-    print("Type 'exit' to stop the program.")
-    print()
+    vector_db = VectorDB(
+        persist_path="./chroma_db",
+        collection_name="knowledge_base",
+    )
 
-    # History used by the prompt builder
-    conversation_history: list[dict[str, str]] = []
+    try:
+        index_knowledge_base(vector_db)
 
-    # Full conversation used by export.py
+    except Exception as error:
+        print(f"\nIndexing failed: {error}")
+        return
+
+    embedding_generator = EmbeddingGenerator()
+    query_rewriter = QueryRewriter()
+    citation_manager = CitationManager()
+
+    retrieval_engine = RetrievalEngine(
+        vector_db=vector_db,
+        embedding_generator=embedding_generator,
+        citation_manager=citation_manager,
+        query_rewriter=query_rewriter,
+    )
+
+    context_builder = ContextBuilder(
+        max_tokens=3000,
+        citation_manager=citation_manager,
+    )
+
+    memory = ConversationMemory()
+
     export_history: list[dict[str, Any]] = []
 
-    while True:
+    print("\nAsk questions using the indexed documents.")
+    print("Commands:")
+    print("- exit: stop the program")
+    print("- export: export the conversation")
+    print("- clear: clear conversation memory")
+    print()
 
+    while True:
         question = input("You: ").strip()
 
         if not question:
             print("Please enter a question.\n")
             continue
 
-        if question.lower() in {
+        command = question.lower()
+
+        if command in {
             "exit",
             "quit",
-            "stop"
+            "stop",
         }:
             break
 
+        if command == "clear":
+            memory.clear()
+            export_history.clear()
+
+            print(
+                "\nConversation memory cleared.\n"
+            )
+            continue
+
+        if command == "export":
+            if not export_history:
+                print(
+                    "\nThere is no conversation to export.\n"
+                )
+                continue
+
+            try:
+                exported_files = export_conversation(
+                    export_history
+                )
+
+                print("\nConversation exported successfully.")
+
+                if isinstance(exported_files, dict):
+                    for file_type, file_path in (
+                        exported_files.items()
+                    ):
+                        print(
+                            f"{file_type.upper()}: "
+                            f"{file_path}"
+                        )
+                else:
+                    print(exported_files)
+
+                print()
+
+            except Exception as error:
+                print(
+                    f"\nConversation export failed: "
+                    f"{error}\n"
+                )
+
+            continue
+
         try:
-            # STEP 1:
-            # Rewrite the user's question to improve retrieval
-            rewritten_question = rewrite_query(
-                question,
-                conversation_history
+            rewritten_result = query_rewriter.rewrite(
+                question
+            )
+
+            rewritten_question = (
+                rewritten_result.rewritten
             )
 
             print(
-                f"\nRewritten query: {rewritten_question}"
+                f"\nRewritten query: "
+                f"{rewritten_question}"
             )
 
-            # STEP 2:
-            # Retrieve the most relevant document chunks
-            retrieved_chunks = retrieve_relevant_chunks(
+            retrieved_chunks = (
+                retrieval_engine.retrieve(
                 rewritten_question,
-                top_k=5
+                top_k=3,
+                rewrite_query=False,
+                )
             )
 
             if not retrieved_chunks:
                 unavailable_answer = (
-                    "The requested information is not available "
-                    "in the provided documents."
+                    "The requested information is not "
+                    "available in the retrieved documents."
                 )
 
-                print(f"\nAssistant: {unavailable_answer}")
+                print(
+                    f"\nAssistant: "
+                    f"{unavailable_answer}"
+                )
                 print("Confidence: 0%\n")
 
-                conversation_history.append(
-                    {
-                        "role": "user",
-                        "content": question
-                    }
-                )
-
-                conversation_history.append(
-                    {
-                        "role": "assistant",
-                        "content": unavailable_answer
-                    }
+                memory.add_user_message(question)
+                memory.add_assistant_message(
+                    unavailable_answer
                 )
 
                 export_history.append(
@@ -250,165 +363,180 @@ def run_assistant() -> None:
                         "question": question,
                         "answer": unavailable_answer,
                         "sources": [],
-                        "confidence": 0
+                        "confidence": 0,
                     }
                 )
 
                 continue
 
-            # STEP 3:
-            # Build a clean context from retrieved chunks
-            context = build_context(retrieved_chunks)
-
-            # STEP 4:
-            # Build the final prompt for Gemini
-            prompt = build_prompt(
-                question=question,
-                context=context,
-                history=conversation_history
+            context_result = (
+                context_builder.build_context(
+                    retrieved_chunks,
+                    min_score=0.20,
+                )
             )
 
-            # STEP 5:
-            # Send the prompt to Gemini
-            generated_answer = generate_answer(prompt)
-
-            # STEP 6:
-            # Validate the generated answer
-            validation_result = validate_answer(
-                answer=generated_answer,
-                context=context
-            )
-
-            is_valid, final_answer = process_validation(
-                validation_result,
-                generated_answer
-            )
-
-            if not is_valid:
-                final_answer = (
-                    "The generated answer could not be validated "
-                    "using the provided documents."
+            if not context_result.context.strip():
+                unavailable_answer = (
+                    "The requested information is not "
+                    "available in the retrieved documents."
                 )
 
-            # STEP 7:
-            # Prepare chunk text for evaluation
-            chunk_texts = [
-                get_chunk_text(chunk)
-                for chunk in retrieved_chunks
-            ]
+                print(
+                    f"\nAssistant: "
+                    f"{unavailable_answer}"
+                )
+                print("Confidence: 0%\n")
 
-            evaluation_result = evaluate_answer(
+                memory.add_user_message(question)
+                memory.add_assistant_message(
+                    unavailable_answer
+                )
+
+                export_history.append(
+                    {
+                        "question": question,
+                        "answer": unavailable_answer,
+                        "sources": [],
+                        "confidence": 0,
+                    }
+                )
+
+                continue
+
+            history = memory.get_history()
+
+            generated_answer = generate_answer(
                 question=question,
-                answer=final_answer,
-                retrieved_chunks=chunk_texts
+                context=context_result.context,
+                history=history,
+                strategy="advanced",
             )
 
-            confidence = evaluation_result.get(
-                "confidence",
-                0
+            if generated_answer.startswith(
+                "Error generating"
+            ):
+                print(
+                    f"\nAssistant: "
+                    f"{generated_answer}\n"
+                )
+                continue
+
+            validation_result = validate_answer(
+                question=question,
+                context=context_result.context,
+                answer=generated_answer,
             )
 
-            # STEP 8:
-            # Extract source metadata
-            sources = extract_sources(
-                retrieved_chunks
-            )
-
-            # Display the final result
-            print("\nAssistant:")
-            print(final_answer)
-
-            print("\nSources:")
-
-            if sources:
-                for source in sources:
-
-                    source_text = source["document_name"]
-
-                    if source["page_number"] is not None:
-                        source_text += (
-                            f" - Page "
-                            f"{source['page_number']}"
-                        )
-
-                    if source["chunk_number"] is not None:
-                        source_text += (
-                            f" - Chunk "
-                            f"{source['chunk_number']}"
-                        )
-
-                    print(f"- {source_text}")
+            if validation_passed(
+                validation_result
+            ):
+                final_answer = generated_answer.strip()
 
             else:
-                print("- No sources available")
+                validation_reason = (
+                    validation_result.get(
+                        "reason",
+                        "The answer could not be validated.",
+                    )
+                )
 
-            print(f"\nConfidence: {confidence}%")
-            print("-" * 60)
+                final_answer = (
+                    "The generated answer could not be "
+                    "validated using the retrieved documents. "
+                    "Therefore, the answer was rejected.\n\n"
+                    f"Reason: {validation_reason}"
+                )
 
-            # Save the question in conversation memory
-            conversation_history.append(
-                {
-                    "role": "user",
-                    "content": question
-                }
+            confidence = (
+                calculate_overall_confidence(
+                    context_result.citations
+                )
             )
 
-            # Save the answer in conversation memory
-            conversation_history.append(
-                {
-                    "role": "assistant",
-                    "content": final_answer
-                }
+            print(
+                f"\nAssistant: {final_answer}"
             )
 
-            # Save the result for future export
+            print_sources(
+                context_result.citations
+            )
+
+            print(
+                f"\nOverall Confidence: "
+                f"{confidence:.2f}%"
+            )
+
+            print(
+                f"Chunks used: "
+                f"{context_result.chunks_used}"
+            )
+
+            print(
+                f"Chunks dropped: "
+                f"{context_result.chunks_dropped}\n"
+            )
+
+            memory.add_user_message(question)
+            memory.add_assistant_message(
+                final_answer
+            )
+
             export_history.append(
                 {
                     "question": question,
                     "answer": final_answer,
-                    "sources": sources,
-                    "confidence": confidence
+                    "sources": [
+                        citation_to_source(citation)
+                        for citation
+                        in context_result.citations
+                    ],
+                    "confidence": confidence,
                 }
             )
 
         except Exception as error:
-            print("\nAn error occurred while processing the question:")
-            print(f"{type(error).__name__}: {error}\n")
+            print(
+                f"\nAn error occurred: {error}\n"
+            )
 
-    # Export the conversation after the user exits
     if export_history:
-
-        print("\nWould you like to export the conversation?")
-
         export_choice = input(
-            "Enter txt, md, or no: "
+            "\nExport conversation before exiting? "
+            "(y/n): "
         ).strip().lower()
 
         if export_choice in {
-            "txt",
-            "md",
-            "markdown"
+            "y",
+            "yes",
         }:
             try:
-                exported_path = export_conversation(
-                    conversation=export_history,
-                    export_format=export_choice
+                exported_files = export_conversation(
+                    export_history
                 )
 
                 print(
-                    f"Conversation exported successfully: "
-                    f"{exported_path}"
+                    "\nConversation exported successfully."
                 )
+
+                if isinstance(exported_files, dict):
+                    for file_type, file_path in (
+                        exported_files.items()
+                    ):
+                        print(
+                            f"{file_type.upper()}: "
+                            f"{file_path}"
+                        )
+                else:
+                    print(exported_files)
 
             except Exception as error:
                 print(
-                    f"Conversation export failed: {error}"
+                    f"Conversation export failed: "
+                    f"{error}"
                 )
 
-        else:
-            print("Conversation was not exported.")
-
-    print("\nAI Knowledge Assistant stopped.")
+    print("\nGoodbye.")
 
 
 if __name__ == "__main__":

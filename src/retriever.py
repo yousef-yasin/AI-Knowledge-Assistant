@@ -7,7 +7,6 @@ from src.embeddings import EmbeddingGenerator
 from src.vector_store import VectorDB
 from src.citations import Citation, CitationManager
 from src.query_rewriter import QueryRewriter
-from src.keyword_search import BM25Index
 
 
 @dataclass
@@ -51,6 +50,7 @@ class RetrievalEngine:
         query: str,
         top_k: int = 5,
         where: dict[str, Any] | None = None,
+        rewrite_query: bool = True,
     ) -> list[RetrievedChunk]:
         """
         Retrieve the top_k most relevant chunks for a query.
@@ -59,6 +59,7 @@ class RetrievalEngine:
             query: The user's natural language question.
             top_k: Number of chunks to return.
             where: Optional metadata filter, e.g. {"document_name": "file.pdf"}.
+            rewrite_query: Whether to rewrite the query before embedding it.
 
         Returns:
             A list of RetrievedChunk objects, most relevant first.
@@ -72,12 +73,15 @@ class RetrievalEngine:
         if top_k <= 0:
             raise ValueError("top_k must be a positive integer.")
 
-        rewritten = self.query_rewriter.rewrite(cleaned_query)
-        # Optimizes the query before embedding, per AKA-12 — e.g. "can you
-        # tell me about the faq" becomes "About the frequently asked questions".
+        query_text = cleaned_query
+
+        if rewrite_query:
+            rewritten = self.query_rewriter.rewrite(cleaned_query)
+            query_text = rewritten.rewritten
 
         query_embedding = self.embedding_generator.generate_embedding(
-            rewritten.rewritten)
+            query_text
+        )
 
         results = self.vector_db.query(
             query_embedding=query_embedding,

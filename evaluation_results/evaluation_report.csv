@@ -1,0 +1,2 @@
+﻿question,expected_answer,actual_answer,retrieval_correct,answer_grounded,confidence,answer_similarity,overall_score
+How many annual leave days do employees receive?,Employees receive 21 paid annual leave days per year.,Employees receive 21 paid annual leave days per year.,True,True,100,100,100
