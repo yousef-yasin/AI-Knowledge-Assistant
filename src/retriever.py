@@ -6,6 +6,8 @@ from typing import Any
 from src.embeddings import EmbeddingGenerator
 from src.vector_store import VectorDB
 from src.citations import Citation, CitationManager
+from src.query_rewriter import QueryRewriter
+from src.keyword_search import BM25Index
 
 
 @dataclass
@@ -25,6 +27,7 @@ class RetrievalEngine:
         vector_db: VectorDB,
         embedding_generator: EmbeddingGenerator | None = None,
         citation_manager: CitationManager | None = None,
+        query_rewriter: QueryRewriter | None = None,
     ) -> None:
         """
         Args:
@@ -34,11 +37,14 @@ class RetrievalEngine:
                 how document embeddings were generated.
             citation_manager: Used to build citations from retrieved chunks.
                 Created automatically if not provided.
+            query_rewriter: Optimizes the raw query before embedding, per
+                AKA-12. Created automatically if not provided.
         """
 
         self.vector_db = vector_db
         self.embedding_generator = embedding_generator or EmbeddingGenerator()
         self.citation_manager = citation_manager or CitationManager()
+        self.query_rewriter = query_rewriter or QueryRewriter()
 
     def retrieve(
         self,
@@ -48,6 +54,14 @@ class RetrievalEngine:
     ) -> list[RetrievedChunk]:
         """
         Retrieve the top_k most relevant chunks for a query.
+
+        Args:
+            query: The user's natural language question.
+            top_k: Number of chunks to return.
+            where: Optional metadata filter, e.g. {"document_name": "file.pdf"}.
+
+        Returns:
+            A list of RetrievedChunk objects, most relevant first.
         """
 
         cleaned_query = query.strip()
@@ -58,8 +72,12 @@ class RetrievalEngine:
         if top_k <= 0:
             raise ValueError("top_k must be a positive integer.")
 
+        rewritten = self.query_rewriter.rewrite(cleaned_query)
+        # Optimizes the query before embedding, per AKA-12 — e.g. "can you
+        # tell me about the faq" becomes "About the frequently asked questions".
+
         query_embedding = self.embedding_generator.generate_embedding(
-            cleaned_query)
+            rewritten.rewritten)
 
         results = self.vector_db.query(
             query_embedding=query_embedding,
@@ -108,10 +126,12 @@ class RetrievalEngine:
         documents = results.get("documents", [[]])[0]
         metadatas = results.get("metadatas", [[]])[0]
         distances = results.get("distances", [[]])[0]
+        # Chroma wraps each field in an outer list (one per query); [0] unwraps our single query.
 
         retrieved_chunks: list[RetrievedChunk] = []
 
         for text, metadata, distance in zip(documents, metadatas, distances):
+            # Converts cosine distance to a similarity score.
             similarity = 1 - distance
             retrieved_chunks.append(
                 RetrievedChunk(text=text, metadata=metadata, score=similarity)
