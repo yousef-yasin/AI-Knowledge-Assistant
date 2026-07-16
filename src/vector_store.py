@@ -103,3 +103,13 @@ class VectorDB:
             n_results=n_results,
             where=where,
         )
+
+    def get_all_documents(self) -> dict:
+        """
+        Retrieve every document currently stored in the collection.
+
+        Returns:
+            Chroma's raw get() response — ids, documents, and metadatas for
+            every stored chunk. Used to build the BM25 keyword index.
+        """
+        return self.collection.get(include=["documents", "metadatas"])

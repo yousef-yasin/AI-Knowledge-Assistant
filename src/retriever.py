@@ -7,6 +7,7 @@ from src.embeddings import EmbeddingGenerator
 from src.vector_store import VectorDB
 from src.citations import Citation, CitationManager
 from src.query_rewriter import QueryRewriter
+from src.keyword_search import BM25Index
 
 
 @dataclass
