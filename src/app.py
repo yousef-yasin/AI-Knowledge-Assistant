@@ -1,3 +1,10 @@
+"""
+Legacy prototype retained for reference.
+
+Run the complete integrated application with:
+    python -m src.main
+"""
+
 from memory import ConversationMemory
 from decision_agent import needs_retrieval
 from generator import generate_answer

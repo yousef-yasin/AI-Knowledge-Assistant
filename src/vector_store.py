@@ -1,27 +1,35 @@
 from __future__ import annotations
 
-# Used to generate a fallback unique ID when metadata is incomplete.
 import uuid
 
-import chromadb  # to import the DB
+import chromadb
 
 from src.embeddings import EmbeddedChunk
 
 
 class VectorDB:
+    """
+    Manage storage and semantic search using ChromaDB.
+    """
+
     def __init__(
         self,
-        # initialize the database, persist_path is the path where the database will be stored
         persist_path: str = "./chroma_db",
-        # collection_name to specify the name of the collection in the database
         collection_name: str = "knowledge_base",
-    ):
-        # actual connection to the database, using PersistentClient to ensure data is saved to disk
-        self.client = chromadb.PersistentClient(path=persist_path)
-        self.collection = self.client.get_or_create_collection(  # if the collection with the specified name does not exist, it will be created
+    ) -> None:
+        """
+        Initialize the persistent ChromaDB collection.
+        """
+
+        self.client = chromadb.PersistentClient(
+            path=persist_path
+        )
+
+        self.collection = self.client.get_or_create_collection(
             name=collection_name,
-            # metadata to specify the distance metric used for similarity search, in this case, cosine similarity
-            metadata={"hnsw:space": "cosine"},
+            metadata={
+                "hnsw:space": "cosine",
+            },
         )
 
     def add_documents(
@@ -30,31 +38,68 @@ class VectorDB:
         embeddings: list[list[float]],
         documents: list[str],
         metadatas: list[dict],
-    ):
-        self.collection.add(
+    ) -> None:
+        """
+        Add new documents or update existing documents.
+
+        Using upsert prevents duplicate-ID errors when
+        the indexing process is executed more than once.
+        """
+
+        if not ids:
+            return
+
+        if not (
+            len(ids)
+            == len(embeddings)
+            == len(documents)
+            == len(metadatas)
+        ):
+            raise ValueError(
+                "IDs, embeddings, documents, and metadata "
+                "must have the same length."
+            )
+
+        self.collection.upsert(
             ids=ids,
             embeddings=embeddings,
             documents=documents,
             metadatas=metadatas,
         )
 
-    def add_embedded_chunks(self, chunks: list[EmbeddedChunk]) -> None:
+    def add_embedded_chunks(
+        self,
+        chunks: list[EmbeddedChunk],
+    ) -> None:
         """
-        Store a list of embedded chunks directly, without manually unpacking
-        ids, embeddings, documents, and metadatas yourself.
-
-        Args:
-            chunks: Embedded chunks produced by EmbeddingGenerator.
+        Store embedded chunks in ChromaDB.
         """
 
         if not chunks:
             return
 
-        ids = [self._build_chunk_id(chunk, index)
-               for index, chunk in enumerate(chunks)]
-        embeddings = [chunk.embedding for chunk in chunks]
-        documents = [chunk.text for chunk in chunks]
-        metadatas = [chunk.metadata for chunk in chunks]
+        ids = [
+            self._build_chunk_id(
+                chunk,
+                index,
+            )
+            for index, chunk in enumerate(chunks)
+        ]
+
+        embeddings = [
+            chunk.embedding
+            for chunk in chunks
+        ]
+
+        documents = [
+            chunk.text
+            for chunk in chunks
+        ]
+
+        metadatas = [
+            chunk.metadata
+            for chunk in chunks
+        ]
 
         self.add_documents(
             ids=ids,
@@ -63,22 +108,61 @@ class VectorDB:
             metadatas=metadatas,
         )
 
-    def _build_chunk_id(self, chunk: EmbeddedChunk, index: int) -> str:
+    def _build_chunk_id(
+        self,
+        chunk: EmbeddedChunk,
+        index: int,
+    ) -> str:
         """
-        Builds a stable, readable ID from chunk metadata, using the real
-        keys produced by metadata.py: 'document_name' and 'chunk_number'.
-        Falls back to a random UUID if either is missing.
+        Build a unique and stable ID for every chunk.
+
+        Page number is included because chunk numbering may
+        restart on every PDF page.
         """
 
-        document_name = chunk.metadata.get("document_name")
-        chunk_number = chunk.metadata.get("chunk_number", index)
+        document_name = str(
+            chunk.metadata.get(
+                "document_name",
+                "unknown_document",
+            )
+        )
 
-        if document_name is not None:
-            return f"{document_name}_{chunk_number}"
+        page_number = chunk.metadata.get(
+            "page_number"
+        )
 
-        return str(uuid.uuid4())
+        chunk_number = chunk.metadata.get(
+            "chunk_number",
+            index + 1,
+        )
 
-    def count(self) -> int:  # returns the number of documents in the collection
+        safe_document_name = (
+            document_name
+            .replace(" ", "_")
+            .replace("/", "_")
+            .replace("\\", "_")
+        )
+
+        page_part = (
+            f"page_{page_number}"
+            if page_number is not None
+            else "no_page"
+        )
+
+        if not document_name:
+            return str(uuid.uuid4())
+
+        return (
+            f"{safe_document_name}_"
+            f"{page_part}_"
+            f"chunk_{chunk_number}"
+        )
+
+    def count(self) -> int:
+        """
+        Return the number of chunks stored in the collection.
+        """
+
         return self.collection.count()
 
     def query(
@@ -88,28 +172,92 @@ class VectorDB:
         where: dict | None = None,
     ) -> dict:
         """
-        Search the collection for the most similar embeddings.
-
-        Args:
-            query_embedding: The embedding vector to search against.
-            n_results: How many results to return.
-            where: Optional metadata filter, e.g. {"document_name": "file.pdf"}.
-
-        Returns:
-            Chroma's raw query response (documents, metadatas, distances).
+        Search for the chunks most similar to a query embedding.
         """
+
+        if not query_embedding:
+            raise ValueError(
+                "Query embedding cannot be empty."
+            )
+
+        stored_count = self.count()
+
+        if stored_count == 0:
+            return {
+                "ids": [[]],
+                "documents": [[]],
+                "metadatas": [[]],
+                "distances": [[]],
+            }
+
+        safe_n_results = min(
+            n_results,
+            stored_count,
+        )
+
+        query_arguments = {
+            "query_embeddings": [
+                query_embedding
+            ],
+            "n_results": safe_n_results,
+            "include": [
+                "documents",
+                "metadatas",
+                "distances",
+            ],
+        }
+
+        if where:
+            query_arguments["where"] = where
+
         return self.collection.query(
-            query_embeddings=[query_embedding],
-            n_results=n_results,
-            where=where,
+            **query_arguments
         )
 
     def get_all_documents(self) -> dict:
         """
-        Retrieve every document currently stored in the collection.
-
-        Returns:
-            Chroma's raw get() response — ids, documents, and metadatas for
-            every stored chunk. Used to build the BM25 keyword index.
+        Retrieve all stored documents and metadata.
         """
-        return self.collection.get(include=["documents", "metadatas"])
+
+        return self.collection.get(
+            include=[
+                "documents",
+                "metadatas",
+            ]
+        )
+
+    def delete_document(
+        self,
+        document_name: str,
+    ) -> None:
+        """
+        Delete all chunks belonging to one document.
+        """
+
+        if not document_name.strip():
+            raise ValueError(
+                "Document name cannot be empty."
+            )
+
+        self.collection.delete(
+            where={
+                "document_name": document_name,
+            }
+        )
+
+    def reset(self) -> None:
+        """
+        Delete all chunks from the current collection.
+        """
+
+        existing = self.collection.get()
+
+        ids = existing.get(
+            "ids",
+            [],
+        )
+
+        if ids:
+            self.collection.delete(
+                ids=ids
+            )

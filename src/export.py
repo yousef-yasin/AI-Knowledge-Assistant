@@ -21,7 +21,7 @@ def ensure_exports_directory() -> None:
     # CHECK IF THE EXPORTS DIRECTORY EXISTS, IF NOT CREATE IT
     # None means that this function does not return any value
     """
-    Create the exports directory if it does not already exist.
+    Create the exports directory if it does not already exist..
     """
 
     EXPORTS_DIR.mkdir(parents=True, exist_ok=True)

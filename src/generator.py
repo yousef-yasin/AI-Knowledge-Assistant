@@ -3,7 +3,7 @@ import os
 from dotenv import load_dotenv
 from google import genai
 
-from prompt_builder import (
+from src.prompt_builder import(
     build_prompt,
     build_advanced_prompt
 )
