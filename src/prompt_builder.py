@@ -12,7 +12,7 @@ def format_history(history: List[dict]) -> str:
     formatted_messages = []
 
     for message in history:
-        role = message.get("role", "unknown").capitalize()
+        role = message.get("role", "Unknown").capitalize()
         content = message.get("content", "")
 
         formatted_messages.append(f"{role}: {content}")
@@ -26,7 +26,7 @@ def build_prompt(
     history: List[dict]
 ) -> str:
     """
-    Build the final prompt that will be sent to Gemini.
+    Build the basic prompt.
     """
 
     formatted_history = format_history(history)
@@ -34,70 +34,98 @@ def build_prompt(
     prompt = f"""
 You are an AI Knowledge Assistant.
 
-Answer the user's question using ONLY the retrieved context below.
-Do not use your own knowledge.
+Answer the user's question using ONLY the retrieved context.
 
 Rules:
-
 - Never invent information.
 - Never use outside knowledge.
-- If the answer does not exist in the context, reply:
-  "The requested information is not available in the provided documents."
-- Be concise.
-- Use bullet points when appropriate.
-- Include document citations at the end.
-- Base the confidence score only on how clearly the answer appears in the context.
-- Confidence must be a number from 0 to 100.
+- If the answer is not available in the retrieved context, say:
+  "The requested information is not available in the retrieved documents."
+- Keep the answer concise.
+- Include document citations.
+- Give a confidence score from 0 to 100.
 
-----------------------------
-Conversation History
-----------------------------
-
+Conversation History:
 {formatted_history}
 
-----------------------------
-Retrieved Context
-----------------------------
-
+Retrieved Context:
 {context}
 
-----------------------------
-User Question
-----------------------------
-
+User Question:
 {question}
 
-----------------------------
-Answer Format
-----------------------------
+Response Format
 
 Answer:
+
 Sources:
+
 Confidence:
 """
 
     return prompt.strip()
 
 
-if __name__ == "__main__":
-    history = [
-        {
-            "role": "user",
-            "content": "Tell me about annual leave."
-        },
-        {
-            "role": "assistant",
-            "content": "Employees receive 21 annual leave days."
-        }
-    ]
+def build_advanced_prompt(
+    question: str,
+    context: str,
+    history: List[dict]
+) -> str:
+    """
+    Build an advanced prompt for higher accuracy.
+    """
 
-    context = """
-Source: Employee Handbook.pdf
-Page: 15
+    formatted_history = format_history(history)
 
-Employees receive 21 annual leave days.
-Emergency leave requires manager approval.
+    prompt = f"""
+You are an advanced AI Knowledge Assistant.
+
+Your goal is to generate accurate, grounded, and professional answers.
+
+Instructions:
+
+- Answer ONLY using the retrieved context.
+- Never use outside knowledge.
+- Never hallucinate.
+- Every factual statement must be supported by the retrieved context.
+- If the answer is missing from the context, reply exactly:
+  "The requested information is not available in the retrieved documents."
+- Consider the conversation history only to understand references such as "it", "that", or follow-up questions.
+- Do not let conversation history override the retrieved context.
+- Keep the answer concise and professional.
+- Use bullet points when appropriate.
+- Include all relevant document citations.
+- Base the confidence score ONLY on the retrieved context.
+- Confidence must be an integer from 0 to 100.
+
+Conversation History:
+{formatted_history}
+
+Retrieved Context:
+{context}
+
+User Question:
+{question}
+
+Response Format
+
+Answer:
+
+Sources:
+- Document Name:
+- Page Number:
+
+Confidence:
 """
+
+    return prompt.strip()
+
+
+
+
+
+
+
 
     question = "What about emergency leave?"
 
