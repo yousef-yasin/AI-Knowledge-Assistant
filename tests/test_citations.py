@@ -69,13 +69,13 @@ def test_calculate_overall_confidence() -> None:
         ),
     ]
 
-    # Calculates the average confidence.
+    # Calculates rank-weighted retrieval confidence.
     confidence = CitationManager.calculate_overall_confidence(
         citations
     )
 
-    # Checks that the average confidence is correct.
-    assert confidence == 85.0
+    # The first source receives twice the weight of the second.
+    assert confidence == 83.33
 
 
 def test_format_citation() -> None:
@@ -173,3 +173,28 @@ def test_helper_function() -> None:
     # Checks that the helper function returns the expected output.
     assert "ai.pdf" in result
     assert "95.00%" in result
+
+def test_calculate_answer_confidence_with_passed_validation() -> None:
+    citations = [
+        Citation("first.pdf", 1, 1, 80.0),
+        Citation("second.pdf", 2, 2, 60.0),
+    ]
+
+    confidence = CitationManager.calculate_answer_confidence(
+        citations=citations,
+        validation_supported=True,
+    )
+
+    # Rank-weighted retrieval is 73.33%; combined with a PASS validator.
+    assert confidence == 84.0
+
+
+def test_calculate_answer_confidence_with_failed_validation() -> None:
+    citations = [Citation("first.pdf", 1, 1, 80.0)]
+
+    confidence = CitationManager.calculate_answer_confidence(
+        citations=citations,
+        validation_supported=False,
+    )
+
+    assert confidence == 48.0

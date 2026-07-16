@@ -1,296 +1,111 @@
 from __future__ import annotations
 
-import csv  # Used to read CSV files and process tabular data.
-from dataclasses import dataclass  # Used to create a simple data class for storing document text and metadata.
-from pathlib import Path  # Used to work with file and folder paths in a clean, cross-platform way.
-from typing import Any  # Allows metadata values to have different data types.
+import csv
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
 
-from docx import Document as DocxDocument  # Reads Microsoft Word (.docx) documents.
-from pypdf import PdfReader  # Reads PDF files and extracts text from each page.
+from docx import Document as DocxDocument
+from pypdf import PdfReader
 
-from src.knowledge_base.metadata import (
-    add_page_metadata, # Adds page-related metadata.
-    create_base_metadata,  # Creates common metadata shared by all documents. 
-)
+from src.knowledge_base.metadata import add_page_metadata, create_base_metadata
 
 
-@dataclass  # Automatically creates constructor and utility methods.
-class LoadedDocument:  # Stores the extracted text along with its metadata.
-    """
-    Represents one loaded part of a document.
-
-    For PDF files, each page is returned as a separate LoadedDocument.
-    For other supported files, the entire file is returned as one LoadedDocument.
-    """
-
-    text: str  # Stores the extracted document text.
-    metadata: dict[str, Any]  # Stores document information such as file name and page number.
+@dataclass
+class LoadedDocument:
+    text: str
+    metadata: dict[str, Any]
 
 
-class DocumentLoader:  # Main class responsible for loading supported document types.
-    """Loads supported document types and extracts their text."""
+class DocumentLoader:
+    """Load PDF, DOCX, TXT, Markdown and CSV documents, with OCR fallback."""
 
     SUPPORTED_EXTENSIONS = {".pdf", ".docx", ".txt", ".md", ".csv"}
-    # Defines the file formats supported by the loader.
 
-    def load(
-        self,
-        file_path: str | Path,
-    ) -> list[LoadedDocument]:
-        # Detects the file type and calls the appropriate loading function.
-        """
-        Load a document based on its file extension.
+    def __init__(self, enable_ocr: bool = True, ocr_language: str = "eng") -> None:
+        self.enable_ocr = enable_ocr
+        self.ocr_language = ocr_language
 
-        Args:
-            file_path: Path of the document to load.
-
-        Returns:
-            A list of LoadedDocument objects.
-
-        Raises:
-            FileNotFoundError: If the file does not exist.
-            ValueError: If the file type is unsupported or contains no text.
-        """
-
-        path = Path(file_path)  # Converts the input path into a Path object.
-
-        if not path.exists():  # Checks whether the file exists.
+    def load(self, file_path: str | Path) -> list[LoadedDocument]:
+        path = Path(file_path)
+        if not path.exists():
             raise FileNotFoundError(f"File not found: {path}")
-
-        if not path.is_file():  # Ensures the provided path is a file, not a directory.
+        if not path.is_file():
             raise ValueError(f"The provided path is not a file: {path}")
-
-        extension = path.suffix.lower()  # Retrieves the file extension in lowercase.
-
+        extension = path.suffix.lower()
         if extension not in self.SUPPORTED_EXTENSIONS:
-            supported = ", ".join(sorted(self.SUPPORTED_EXTENSIONS))
-
-            raise ValueError(
-                f"Unsupported file type: {extension}. "
-                f"Supported types are: {supported}"
-            )
-
+            raise ValueError(f"Unsupported file type: {extension}")
         loaders = {
-            # Maps each supported extension to its corresponding loader function.
-            ".pdf": self._load_pdf,
-            ".docx": self._load_docx,
-            ".txt": self._load_text,
-            ".md": self._load_text,
+            ".pdf": self._load_pdf, ".docx": self._load_docx,
+            ".txt": self._load_text, ".md": self._load_text,
             ".csv": self._load_csv,
         }
-
-        documents = loaders[extension](
-            path
-        )  # Calls the correct loader based on the file type.
-
-        documents = [
-            # Removes empty documents or pages.
-            document
-            for document in documents
-            if document.text and document.text.strip()
-        ]
-
+        documents = [doc for doc in loaders[extension](path) if doc.text.strip()]
         if not documents:
-            raise ValueError(
-                f"No readable text was found in: {path.name}"
-            )
-
-        return documents  # Returns the loaded documents.
-
-    def _load_pdf(
-        self,
-        path: Path,
-    ) -> list[LoadedDocument]:
-        """Extract text from a PDF page by page."""
-
-        reader = PdfReader(str(path))  # Opens the PDF document.
-        documents: list[LoadedDocument] = []
-
-        # Iterates through all PDF pages.
-        for page_index, page in enumerate(
-            reader.pages,
-            start=1,
-        ):
-            text = page.extract_text() or ""  # Extracts text from the current page.
-
-            metadata = create_base_metadata(path) # Creates the common metadata for the current document.
-
-            metadata = add_page_metadata(
-                metadata,
-                page_number=page_index,  # Saves the current page number. 
-                total_pages=len(reader.pages),  # Stores the total number of pages.
-            )
-
-            documents.append(
-                LoadedDocument(
-                    text=text.strip(),
-                    metadata=metadata,
-                )
-            )
-
+            raise ValueError(f"No readable text was found in: {path.name}")
         return documents
 
-    def _load_docx(
-        self,
-        path: Path,
-    ) -> list[LoadedDocument]:
-        """Extract text from a DOCX file."""
-
-        document = DocxDocument(str(path))  # Opens the DOCX document.
-
-        paragraphs = [
-            # Extracts all non-empty paragraphs.
-            paragraph.text.strip()  # Removes extra spaces from each paragraph.
-            for paragraph in document.paragraphs
-            if paragraph.text.strip()
-        ]
-
-        text = "\n".join(
-            paragraphs
-        )  # Combines all paragraphs into one text.
-
-        metadata = create_base_metadata(path) # Creates the common metadata for the current document.
-
-
-        metadata = add_page_metadata(
-            metadata,
-            page_number=None, # No page information is available for this file type.
-        )
-
-        return [
-            LoadedDocument(
-                text=text,
-                metadata=metadata,
+    def _load_pdf(self, path: Path) -> list[LoadedDocument]:
+        reader = PdfReader(str(path))
+        documents: list[LoadedDocument] = []
+        for page_index, page in enumerate(reader.pages, start=1):
+            text = (page.extract_text() or "").strip()
+            extraction_method = "native_text"
+            if self.enable_ocr and len(text) < 20:
+                ocr_text = self._ocr_pdf_page(path, page_index - 1)
+                if ocr_text.strip():
+                    text = ocr_text.strip()
+                    extraction_method = "ocr"
+            metadata = add_page_metadata(
+                create_base_metadata(path), page_index, len(reader.pages)
             )
-        ]
+            metadata["extraction_method"] = extraction_method
+            documents.append(LoadedDocument(text=text, metadata=metadata))
+        return documents
 
-    def _load_text(
-        self,
-        path: Path,
-    ) -> list[LoadedDocument]:
-        """Extract text from TXT and Markdown files."""
+    def _ocr_pdf_page(self, path: Path, page_index: int) -> str:
+        """Render one PDF page and OCR it. Returns empty text if OCR is unavailable."""
+        try:
+            import pypdfium2 as pdfium
+            import pytesseract
 
-        text = self._read_text_with_fallback(
-            path
-        )  # Reads TXT and Markdown files using multiple encodings.
+            pdf = pdfium.PdfDocument(str(path))
+            page = pdf[page_index]
+            image = page.render(scale=2.5).to_pil()
+            return pytesseract.image_to_string(image, lang=self.ocr_language)
+        except Exception:
+            return ""
 
-        metadata = create_base_metadata(path) # Creates the common metadata for the current document.
+    def _load_docx(self, path: Path) -> list[LoadedDocument]:
+        document = DocxDocument(str(path))
+        paragraphs = [p.text.strip() for p in document.paragraphs if p.text.strip()]
+        metadata = add_page_metadata(create_base_metadata(path), None)
+        return [LoadedDocument("\n".join(paragraphs), metadata)]
 
+    def _load_text(self, path: Path) -> list[LoadedDocument]:
+        metadata = add_page_metadata(create_base_metadata(path), None)
+        return [LoadedDocument(self._read_text_with_fallback(path).strip(), metadata)]
 
-        metadata = add_page_metadata(
-            metadata,
-            page_number=None, # No page information is available for this file type.
-        )
-
-        return [
-            LoadedDocument(
-                text=text.strip(),
-                metadata=metadata,
-            )
-        ]
-
-    def _load_csv(
-        self,
-        path: Path,
-    ) -> list[LoadedDocument]:
-        """
-        Convert every CSV row into readable text.
-
-        Example:
-        name: Ahmad | department: IT | salary: 500
-        """
-
-        rows_as_text: list[str] = []
-
-        with path.open(
-            mode="r",
-            encoding="utf-8-sig",
-            newline="",
-        ) as csv_file:
-            reader = csv.DictReader(
-                csv_file
-            )  # Reads CSV rows using column headers.
-
+    def _load_csv(self, path: Path) -> list[LoadedDocument]:
+        rows: list[str] = []
+        with path.open("r", encoding="utf-8-sig", newline="") as handle:
+            reader = csv.DictReader(handle)
             if reader.fieldnames is None:
-                raise ValueError(
-                    f"CSV file has no headers: {path.name}"
-                )
-
-            # Processes each row separately.
-            for row_number, row in enumerate(
-                reader,
-                start=1,
-            ):
-                values = [
-                    f"{column}: {value}"
-                    for column, value in row.items()
-                    if value is not None
-                    and str(value).strip()
-                ]
-
+                raise ValueError(f"CSV file has no headers: {path.name}")
+            for number, row in enumerate(reader, 1):
+                values = [f"{key}: {value}" for key, value in row.items()
+                          if value is not None and str(value).strip()]
                 if values:
-                    rows_as_text.append(
-                        # Converts each CSV row into readable text.
-                        f"Row {row_number}: "
-                        + " | ".join(values)
-                    )
-
-        metadata = create_base_metadata(path) # Creates the common metadata for the current document.
-
-
-        metadata = add_page_metadata(
-            metadata,
-            page_number=None, # No page information is available for this file type.
-        )
-
-        metadata["row_count"] = len(rows_as_text)
-
-        return [
-            LoadedDocument(
-                text="\n".join(rows_as_text),
-                metadata=metadata,
-            )
-        ]
+                    rows.append(f"Row {number}: " + " | ".join(values))
+        metadata = add_page_metadata(create_base_metadata(path), None)
+        metadata["row_count"] = len(rows)
+        return [LoadedDocument("\n".join(rows), metadata)]
 
     @staticmethod
-    def _read_text_with_fallback(
-        path: Path,
-    ) -> str:
-        """Read text using common encodings."""
-
-        encodings = [
-            "utf-8",
-            "utf-8-sig",
-            "cp1252",
-            "latin-1",
-        ]  # List of common text encodings to try.
-
-        # Attempts to read the file using each encoding.
-        for encoding in encodings:
+    def _read_text_with_fallback(path: Path) -> str:
+        for encoding in ("utf-8", "utf-8-sig", "utf-16", "cp1252"):
             try:
-                return path.read_text(
-                    encoding=encoding
-                )
+                return path.read_text(encoding=encoding)
             except UnicodeDecodeError:
-                # Tries the next encoding if decoding fails.
                 continue
-
-        raise ValueError(
-            f"Could not decode text file: {path.name}"
-        )
-
-
-def load_document(
-    file_path: str | Path,
-) -> list[LoadedDocument]:
-    # Helper function that loads a document using the DocumentLoader class.
-    """
-    Convenience function for loading one document.
-
-    Example:
-        documents = load_document("uploads/report.pdf")
-    """
-
-    loader = DocumentLoader()
-
-    return loader.load(file_path)
+        raise ValueError(f"Could not decode text file: {path.name}")

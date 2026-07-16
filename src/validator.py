@@ -1,6 +1,7 @@
-import os
 import json
-# we want to convert the text returned by Gemini into a Python dictionary.
+import os
+from typing import Any
+
 
 from dotenv import load_dotenv
 from google import genai
@@ -9,12 +10,10 @@ from google import genai
 load_dotenv()
 
 # Create Gemini client
-client = genai.Client(
-    api_key=os.getenv("GOOGLE_API_KEY")
-)
+client = genai.Client(api_key=os.getenv("GOOGLE_API_KEY"))
 
 
-def validate_answer(question: str, context: str, answer: str) -> dict:
+def validate_answer(question: str, context: str, answer: str) -> dict[str, Any]:
     """
     Validates whether the generated answer is fully supported
     by the retrieved context.
@@ -26,7 +25,7 @@ def validate_answer(question: str, context: str, answer: str) -> dict:
             "supported": True/False
         }
     """
-#we build a dedicated prompt for verification.
+    # Build a dedicated prompt for verification.
     prompt = f"""
 You are an AI response validator.
 
@@ -71,13 +70,12 @@ Return JSON only.
 """
 
     try:
-
         response = client.models.generate_content(
             model="gemini-2.5-flash",
             contents=prompt
         )
 
-        result = response.text.strip()
+        result = (response.text or "").strip()
 
         if result.startswith("```json"):
             result = result[7:]
@@ -89,10 +87,9 @@ Return JSON only.
 
         return json.loads(result.strip())
 
-    except Exception as e:
-
+    except Exception as error:
         return {
             "status": "FAIL",
-            "reason": f"Validation error: {str(e)}",
+            "reason": f"Validation error: {error}",
             "supported": False
         }
