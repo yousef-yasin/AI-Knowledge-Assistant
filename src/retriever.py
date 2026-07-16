@@ -1,20 +1,20 @@
 from __future__ import annotations
 
-# Creates a simple class for storing a retrieved result.
-from dataclasses import dataclass  # auto generate _init_, _repr_
-from typing import Any  # Allows metadata values to have different data types.
+from dataclasses import dataclass
+from typing import Any
 
 from src.embeddings import EmbeddingGenerator
 from src.vector_store import VectorDB
+from src.citations import Citation, CitationManager
 
 
 @dataclass
 class RetrievedChunk:
     """Stores a single retrieved chunk together with its relevance score."""
 
-    text: str  # The original chunk text.
-    metadata: dict[str, Any]  # Document, page, and chunk info.
-    score: float  # Similarity score; higher means more relevant.
+    text: str
+    metadata: dict[str, Any]
+    score: float
 
 
 class RetrievalEngine:
@@ -22,35 +22,34 @@ class RetrievalEngine:
 
     def __init__(
         self,
-        vector_db: VectorDB,  # passes the DB we Built
-        # optional, if not provided, it creates a default generator
+        vector_db: VectorDB,
         embedding_generator: EmbeddingGenerator | None = None,
+        citation_manager: CitationManager | None = None,
     ) -> None:
         """
-        Initialize the retrieval engine.
-
         Args:
             vector_db: The VectorDB instance to search against.
             embedding_generator: Generator used to embed the query. Created
-                automatically with the default model if not provided, so it
-                stays consistent with how document embeddings were generated.
+                automatically if not provided, so it stays consistent with
+                how document embeddings were generated.
+            citation_manager: Used to build citations from retrieved chunks.
+                Created automatically if not provided.
         """
 
         self.vector_db = vector_db
         self.embedding_generator = embedding_generator or EmbeddingGenerator()
+        self.citation_manager = citation_manager or CitationManager()
 
     def retrieve(
         self,
-        query: str,  # the user's question
-        top_k: int = 5,  # how many results to return
-        where: dict[str, Any] | None = None,  # optional filter
+        query: str,
+        top_k: int = 5,
+        where: dict[str, Any] | None = None,
     ) -> list[RetrievedChunk]:
         """
-        Returns:
-            A list of RetrievedChunk objects, most relevant first.
+        Retrieve the top_k most relevant chunks for a query.
         """
 
-        # Removes unnecessary spaces around the query.
         cleaned_query = query.strip()
 
         if not cleaned_query:
@@ -61,7 +60,6 @@ class RetrievalEngine:
 
         query_embedding = self.embedding_generator.generate_embedding(
             cleaned_query)
-        # Embeds the query using the same model as the documents, so vectors are comparable.
 
         results = self.vector_db.query(
             query_embedding=query_embedding,
@@ -71,34 +69,52 @@ class RetrievalEngine:
 
         return self._parse_results(results)
 
-    def _parse_results(
+    def retrieve_with_citations(
         self,
-        results: dict[str, Any],
-    ) -> list[RetrievedChunk]:
+        query: str,
+        top_k: int = 5,
+        where: dict[str, Any] | None = None,
+    ) -> tuple[list[RetrievedChunk], list[Citation]]:
         """
-        Convert Chroma's raw query response into a list of RetrievedChunk.
+        Retrieve chunks and build a matching Citation for each one.
 
-        Chroma returns cosine distance (lower = more similar). We convert
-        this to a similarity score (higher = more relevant) to match
-        typical retrieval conventions.
+        Args:
+            query: The user's natural language question.
+            top_k: Number of chunks to return.
+            where: Optional metadata filter.
+
+        Returns:
+            A tuple of (chunks, citations) — citations[i] corresponds to
+            chunks[i], built from that chunk's metadata and similarity score.
         """
+
+        chunks = self.retrieve(query, top_k=top_k, where=where)
+
+        citations = [
+            self.citation_manager.create_citation(
+                metadata=chunk.metadata,
+                similarity_score=chunk.score,
+            )
+            for chunk in chunks
+        ]
+        # Builds one Citation per chunk, reusing the chunk's own similarity
+        # score as the confidence source — no re-fetching or re-scoring needed.
+
+        return chunks, citations
+
+    def _parse_results(self, results: dict[str, Any]) -> list[RetrievedChunk]:
+        """Converts Chroma's raw query response into RetrievedChunk objects."""
 
         documents = results.get("documents", [[]])[0]
         metadatas = results.get("metadatas", [[]])[0]
         distances = results.get("distances", [[]])[0]
-        # Chroma wraps each field in an outer list (one per query); [0] unwraps our single query.
 
         retrieved_chunks: list[RetrievedChunk] = []
 
         for text, metadata, distance in zip(documents, metadatas, distances):
-            # Converts cosine distance to a similarity score.
             similarity = 1 - distance
             retrieved_chunks.append(
-                RetrievedChunk(
-                    text=text,
-                    metadata=metadata,
-                    score=similarity,
-                )
+                RetrievedChunk(text=text, metadata=metadata, score=similarity)
             )
 
         return retrieved_chunks
