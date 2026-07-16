@@ -1,0 +1,50 @@
+Company Information
+
+Company Name:
+NovaTech Solutions
+
+Industry:
+Artificial Intelligence and Software Development
+
+Head Office:
+Amman, Jordan
+
+Established:
+2020
+
+Working Days:
+Sunday through Thursday
+
+Weekend:
+Friday and Saturday
+
+Working Hours:
+9:00 AM to 5:00 PM
+
+Remote Work Policy:
+Employees may work remotely up to two days per week after receiving approval from their direct manager.
+
+Probation Period:
+Three months.
+
+Notice Period:
+Employees must submit a resignation notice at least 30 calendar days before leaving the company.
+
+Dress Code:
+Business Casual.
+
+Human Resources Email:
+hr@novatech.example
+
+IT Support Email:
+support@novatech.example
+
+Official Website:
+www.novatech.example
+
+Core Values:
+- Integrity
+- Innovation
+- Teamwork
+- Continuous Learning
+- Customer Satisfaction
