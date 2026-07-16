@@ -1,4 +1,3 @@
-
 from memory import ConversationMemory
 from decision_agent import needs_retrieval
 from generator import generate_answer
@@ -14,8 +13,8 @@ memory = ConversationMemory()
 
 # ----------------------------
 # Temporary retrieved context
-# Replace this with retriever output
-# from Member 2
+# This will later be replaced by
+# the Retriever module (Member 2)
 # ----------------------------
 
 knowledge_context = """
@@ -33,9 +32,8 @@ def ask_question(question: str):
     print("\nUser:")
     print(question)
 
-    # Get previous conversation
+    # Get conversation history
     history = memory.get_history()
-
 
     # ----------------------------
     # Retrieval Decision Agent
@@ -46,27 +44,22 @@ def ask_question(question: str):
         history
     )
 
-
     if retrieve:
 
         print("\n[Retrieval Decision]: Searching documents...")
 
-        # Here will be replaced by:
-        #
+        # TODO:
+        # Replace this with the real Retriever
         # context = retrieve_context(question)
-        #
-        # from retriever.py
 
         context = knowledge_context
-
 
     else:
 
         print("\n[Retrieval Decision]: Using conversation memory...")
 
+        # Temporary context
         context = knowledge_context
-
-
 
     # ----------------------------
     # Generate Answer
@@ -79,6 +72,14 @@ def ask_question(question: str):
         strategy="advanced"
     )
 
+    # ----------------------------
+    # Handle Gemini Errors
+    # ----------------------------
+
+    if isinstance(answer, str) and answer.startswith("Error"):
+        print("\nAssistant:")
+        print(answer)
+        return
 
     # ----------------------------
     # Validate Answer
@@ -90,10 +91,8 @@ def ask_question(question: str):
         answer=answer
     )
 
-
     print("\nValidation:")
     print(validation)
-
 
     # ----------------------------
     # Display Result
@@ -104,23 +103,15 @@ def ask_question(question: str):
         print("\nAssistant:")
         print(answer)
 
+        # Save conversation
         memory.add_user_message(question)
-
         memory.add_assistant_message(answer)
-
 
     else:
 
         print("\nAssistant:")
-        print(
-            "The answer was rejected because it could not be verified."
-        )
-
-        print(
-            "Reason:",
-            validation["reason"]
-        )
-
+        print("The answer was rejected because it could not be verified.")
+        print("Reason:", validation["reason"])
 
 
 # ----------------------------
@@ -129,15 +120,19 @@ def ask_question(question: str):
 
 if __name__ == "__main__":
 
-
     print("==============================")
     print(" AI Knowledge Assistant ")
     print("==============================")
 
+    print("\nType 'exit' to quit.\n")
 
     while True:
 
-        question = input("\nYou: ")
+        question = input("You: ").strip()
+
+        if not question:
+            print("Please enter a question.")
+            continue
 
         if question.lower() in [
             "exit",
@@ -147,7 +142,4 @@ if __name__ == "__main__":
             print("Goodbye!")
             break
 
-
         ask_question(question)
-
-
