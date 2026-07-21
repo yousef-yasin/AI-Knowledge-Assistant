@@ -82,7 +82,7 @@ def generate_text(prompt: str) -> str:
     try:
         
         response = client.models.generate_content(
-            model="gemini-2.5-flash",
+            model="gemini-2.0-flash",
             contents=prompt,
         )
 
@@ -169,7 +169,7 @@ def stream_generate_answer(
 
         response = (
             client.models.generate_content_stream(
-                model="gemini-2.5-flash",
+                model="gemini-2.0-flash",
                 contents=prompt,
             )
         )

@@ -10,6 +10,7 @@ from src.query_rewriter import QueryRewriter
 from src.vector_store import VectorDB
 
 
+
 @dataclass
 class RetrievedChunk:
     text: str
