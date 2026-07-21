@@ -12,9 +12,9 @@ from src.vector_store import VectorDB
 
 @dataclass
 class RetrievedChunk:
-    text: str
-    metadata: dict[str, Any]
-    score: float
+    text: str 
+    metadata: dict[str, Any] 
+    score: float 
 
 
 class RetrievalEngine:
@@ -24,8 +24,8 @@ class RetrievalEngine:
 
     def __init__(
         self,
-        vector_db: VectorDB,
-        embedding_generator: (
+        vector_db: VectorDB, 
+        embedding_generator: ( 
             EmbeddingGenerator | None
         ) = None,
         citation_manager: (
