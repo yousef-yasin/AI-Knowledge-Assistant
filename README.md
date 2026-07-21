@@ -176,3 +176,4 @@ flowchart LR
 | Member 2 | Vector Database, Hybrid Retrieval, Query Rewriting, Context Builder |
 | Member 3 | Prompt Builder, Gemini Integration, Validation, Memory, Agent |
 | Member 4 | Evaluation, Export, Documentation, Testing, GitHub, Jira, Final Integration |
+..
