@@ -1,14 +1,16 @@
 from typing import List
+#استوردنا List حتى نكتب نوع المتغيرات.
 
 
 def format_history(history: List[dict]) -> str:
+    #تحويل الـ History إلى نص مرتب.
     """
     Convert conversation history into a readable string.
     """
 
     if not history:
         return "No previous conversation."
-
+    # اذا ما كان عندي محادثة من قبل
     formatted_messages = []
 
     for message in history:
@@ -21,14 +23,26 @@ def format_history(history: List[dict]) -> str:
             "content",
             "",
         )
+        '''
+        الهدف الرئيسي نحول المحادثة ل history
+        الهدف انه تمر على كل رسالة بال history 
+        تحدد اذا السوال من المستخدم او المساعد
+        وتطلع على محتوى الرسالة
+        وتحولها من قائمة الى نص لانه جيمني ما بفهم الا نص
+        واذا ما لقى المطلوب بس برجع غير معروف 
+        وهيك البرنامج بضل شغال وما بتوقف عن العمل
+        اذا هو رح يوخذ السوال والمحتوى
+
+        '''
 
         formatted_messages.append(
             f"{role}: {content}"
         )
 
     return "\n".join(formatted_messages)
+#join() تجمع عناصر القائمة في String واحد.
 
-
+#هذه تبني Basic Prompt.
 def build_prompt(
     question: str,
     context: str,
@@ -39,7 +53,7 @@ def build_prompt(
     """
 
     formatted_history = format_history(history)
-
+# لحتى يضل نص وهون بلشنا نبني ال prompt ونحط القواعد
     prompt = f"""
 You are an AI Knowledge Assistant.
 
@@ -72,8 +86,10 @@ Answer:
 """
 
     return prompt.strip()
+#تحذف الفراغات والأسطر الفارغة من البداية والنهاية.
 
 
+# المتطور هو فقط لحتى يعطي اجابقة اقوى ونفس عمل العادي
 def build_advanced_prompt(
     question: str,
     context: str,
@@ -119,3 +135,18 @@ Answer:
 """
 
     return prompt.strip()
+
+
+
+"""
+فنحن لا نرتب الإجابة فقط، وإنما ننظم المعلومات التي نعطيها لـ Gemini.
+يعني كأننا نقول له:
+هذه هي المحادثة السابقة:
+...
+وهذه هي المعلومات التي يجب أن تعتمد عليها:
+...
+وهذا هو سؤال المستخدم:
+...
+الآن ابدأ بالإجابة هنا:
+Answer:
+"""

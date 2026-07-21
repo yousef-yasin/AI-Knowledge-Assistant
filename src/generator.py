@@ -1,11 +1,15 @@
 from __future__ import annotations
+#هذا ليس له علاقة بـ Gemini، وإنما ميزة في بايثون لتحسين التعامل مع Type Hints.
 
 import os
+#حتى نستطيع قراءة متغيرات البيئة.
 from collections.abc import Iterator
 from typing import Any
 
 from dotenv import load_dotenv
+#هذه تقرأ ملف .env.
 from google import genai
+#هذه مكتبة Gemini.
 
 from src.prompt_builder import (
     build_advanced_prompt,
@@ -13,12 +17,18 @@ from src.prompt_builder import (
     format_history,
 )
 
-load_dotenv()
+"""
+هنا استوردنا الدوال الموجودة في prompt_builder.py.
 
+لاحظي أننا لا نبني الـ Prompt هنا، بل نستدعي الدوال التي كتبناها سابقًا.
+"""
+
+load_dotenv()
+#هذا يجعل البرنامج يستطيع قراءة
 
 def _create_client() -> genai.Client:
     """Create a configured Gemini client only when needed."""
-
+# حتى ننشأ اتصال مع جيميني
     api_key = os.getenv("GOOGLE_API_KEY")
 
     if not api_key:
@@ -27,6 +37,9 @@ def _create_client() -> genai.Client:
         )
 
     return genai.Client(api_key=api_key)
+#بنشوف اذا المفتاح موجود او لا لحتى نحدد المشكلة
+#اذا كان موجود رح ينشأ عميل ويرجعه
+#genai.Client:ما بتنشأ اتصال الا عند الحاجة بتستخدم Lazy Loading.
 
 
 class _ModelsProxy:
@@ -49,13 +62,16 @@ class _ModelsProxy:
             )
         finally:
             real_client.close()
+            # انشأنا اتصال جديد لحتى يرسل ال prompt ولو صار خطأ رح يغلق الاتصال
 
     def generate_content_stream(
+            #إرسال الطلب إلى Gemini 
+            # واستقبال الإجابة بشكل تدريجي (Streaming)، وليس دفعة واحدة.
         self,
         **kwargs: Any,
     ):
         real_client = _create_client()
-
+          # انشأنا اتصال
         try:
             for chunk in (
                 real_client.models
@@ -64,6 +80,9 @@ class _ModelsProxy:
                 yield chunk
         finally:
             real_client.close()
+            # الهدف يرجع كلمة كلمة 
+            #لكي يرى المستخدم الإجابة مباشرة أثناء توليدها،
+            #بدل أن ينتظر حتى ينتهي Gemini من كتابة الإجابة كاملة.
 
 
 class _ClientProxy:
@@ -78,7 +97,7 @@ client = _ClientProxy()
 
 def generate_text(prompt: str) -> str:
     """Generate one complete Gemini response."""
-
+#تأخذ Prompt جاهز وترسله إلى Gemini.
     try:
         
         response = client.models.generate_content(
